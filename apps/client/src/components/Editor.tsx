@@ -49,19 +49,23 @@ export default function Editor({
 
       for (const change of event.changes) {
         const position = change.rangeOffset;
-
-        if (change.text.length > 0) {
-          onOp({
-            ops: [{ type: "insert", position, chars: change.text }],
-            revision: revisionRef.current,
-            userId: currentUserId,
-            timestamp: Date.now(),
-          });
+        const ops: Monaco.editor.IModelContentChange[] = []; // Not the type, we need TextOp
+        
+        const textOps: any[] = [];
+        
+        // Always delete first so that the base string is reduced before inserting characters 
+        // at the same position.
+        if (change.rangeLength > 0) {
+          textOps.push({ type: "delete", position, count: change.rangeLength });
         }
 
-        if (change.rangeLength > 0) {
+        if (change.text.length > 0) {
+          textOps.push({ type: "insert", position, chars: change.text });
+        }
+
+        if (textOps.length > 0) {
           onOp({
-            ops: [{ type: "delete", position, count: change.rangeLength }],
+            ops: textOps,
             revision: revisionRef.current,
             userId: currentUserId,
             timestamp: Date.now(),

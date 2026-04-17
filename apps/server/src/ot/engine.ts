@@ -77,7 +77,14 @@ export function applyOp(doc: string, op: Operation): string {
 
   // sort ops by position descending so earlier positions
   // do not shift later ones during application
-  const sorted = [...op.ops].sort((a, b) => b.position - a.position);
+  const sorted = [...op.ops].sort((a, b) => {
+    if (b.position !== a.position) {
+      return b.position - a.position;
+    }
+    if (a.type === 'delete' && b.type === 'insert') return -1;
+    if (a.type === 'insert' && b.type === 'delete') return 1;
+    return 0;
+  });
 
   for (const textOp of sorted) {
     if (textOp.type === 'insert' && textOp.chars) {

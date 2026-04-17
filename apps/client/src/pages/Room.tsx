@@ -9,6 +9,7 @@ import type {
   Operation,
   CursorPosition,
 } from "@collab-editor/shared";
+import OutputPanel from "../components/OutputPanel";
 
 type RemoteCursor = {
   username: string;
@@ -104,6 +105,22 @@ export default function Room() {
     };
   }, [roomId, socket, username, navigate, receiveOp, setRevision]);
 
+  const handleRun = useCallback(() => {
+    if (!room) return;
+    setRunning(true);
+    setRunResult(null);
+    socket.emit('run-code', {
+      code: docRef.current,
+      language: room.language,
+    });
+  }, [socket, room]);
+
+
+  useEffect(() => {
+    docRef.current = doc;
+  }, [doc]);
+
+
   const handleOp = useCallback(
     (op: Operation) => {
       socket.emit("op", { op });
@@ -130,15 +147,13 @@ export default function Room() {
   return (
     <div className="flex flex-col h-screen bg-neutral-900 text-white">
       <div className="flex items-center justify-between px-4 py-2 bg-neutral-800 border-b border-neutral-700">
-        <span className="text-sm text-neutral-400">
-          room: {room.id.slice(0, 8)}...
-        </span>
+        <span className="text-sm text-neutral-400">room: {room.id.slice(0, 8)}...</span>
         <div className="flex gap-2">
           {users.map((u) => (
             <span
               key={u.id}
               className="text-xs px-2 py-1 rounded-full"
-              style={{ backgroundColor: u.color, color: "white" }}
+              style={{ backgroundColor: u.color, color: 'white' }}
             >
               {u.username}
             </span>
@@ -157,11 +172,20 @@ export default function Room() {
           doc={doc}
           language={room.language}
           users={users}
-          currentUserId={socket.id ?? ""}
+          currentUserId={socket.id ?? ''}
           onOp={handleOp}
           onCursorChange={handleCursorChange}
           remoteOp={remoteOp}
           remoteCursors={remoteCursors}
+        />
+      </div>
+
+      <div className="h-48">
+        <OutputPanel
+          language={room.language}
+          onRun={handleRun}
+          result={runResult}
+          running={running}
         />
       </div>
     </div>
