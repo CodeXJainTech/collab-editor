@@ -6,6 +6,7 @@ const router = Router();
 
 router.post('/', async (req, res) => {
   try {
+    console.log("came here");
     const language: Language = req.body.language ?? 'javascript';
     const room = await createRoom(language);
     res.status(201).json({ room });

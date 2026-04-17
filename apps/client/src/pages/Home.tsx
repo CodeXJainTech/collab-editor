@@ -31,7 +31,7 @@ export default function Home() {
     <div>
       <h1>Collab Editor</h1>
       <p>Create a room and share the link</p>
-      <button onClick={() => handleCreate("javascript")} disabled={loading}>
+      <button className="text-blue-500 hover:text-blue-700 bg bg-amber-200" onClick={() => handleCreate("javascript")} disabled={loading}>
         New JavaScript room
       </button>
       <button onClick={() => handleCreate("python")} disabled={loading}>

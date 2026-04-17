@@ -10,8 +10,10 @@ import redis, {
   pushOp,
   roomDocKey,
   roomRevKey,
+  roomUsersKey,
 } from "../db/redis";
 import { transformOp, applyOp } from "../ot/engine";
+import { executeCode } from "../execution/judge0";
 
 type IoServer = Server<ClientToServerEvents, ServerToClientEvents>;
 type IoSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
@@ -21,6 +23,8 @@ const socketRoomMap = new Map<
   string,
   { roomId: string; userId: string; username: string }
 >();
+
+const runTimestamps = new Map<string, number>();
 
 export function registerRoomHandlers(io: IoServer, socket: IoSocket) {
   socket.on("join-room", async ({ roomId, username }) => {
@@ -142,4 +146,52 @@ export function registerRoomHandlers(io: IoServer, socket: IoSocket) {
       socket.emit("error", { code: "OP_FAILED", message: "operation failed" });
     }
   });
+
+  socket.on('cursor-move', ({ position }) => {
+    const info = socketRoomMap.get(socket.id);
+    if (!info) return;
+  
+    const { roomId, userId, username } = info;
+  
+    // get the user's color from Redis and broadcast
+    redis.hget(roomUsersKey(roomId), userId).then((raw) => {
+      if (!raw) return;
+      const user = JSON.parse(raw);
+      socket.to(roomId).emit('cursor-broadcast', {
+        userId,
+        username,
+        color: user.color,
+        position,
+      });
+    });
+  });
+
+  socket.on('run-code', async ({ code, language }) => {
+    const info = socketRoomMap.get(socket.id);
+    if (!info) return;
+
+    const { roomId } = info;
+
+    // one execution per socket every 10 seconds
+    const last = runTimestamps.get(socket.id) ?? 0;
+    if (Date.now() - last < 10_000) {
+      socket.emit('error', { code: 'RATE_LIMITED', message: 'wait before running again' });
+      return;
+    }
+    runTimestamps.set(socket.id, Date.now());
+
+    try {
+      const result = await executeCode(code, language);
+      socket.emit('run-result', result);
+    } catch (err) {
+      console.error('execution error', err);
+      socket.emit('run-result', {
+        stdout: '',
+        stderr: 'execution service unavailable',
+        status: 'error',
+        time: null,
+      });
+    }
+  });
+
 }

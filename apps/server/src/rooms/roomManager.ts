@@ -19,24 +19,31 @@ function pickColor(index: number) {
 }
 
 export async function createRoom(language: Language = 'javascript'): Promise<Room> {
-  const id = uuidv4();
-  const now = Date.now();
+  try{
+    const id = uuidv4();
+    const now = Date.now();
 
-  await prisma.room.create({
-    data: {
-      id,
-      language,
-      createdAt: now,
-      lastActive: now,
-    },
-  });
+    await prisma.room.create({
+      data: {
+        id,
+        language,
+        createdAt: now,
+        lastActive: now,
+      },
+    });
 
-  await redis.set(roomDocKey(id), '');
-  await redis.set(roomRevKey(id), '0');
-  await redis.set(roomLangKey(id), language);
-  await touchRoomTTL(id);
+    await redis.set(roomDocKey(id), '');
+    await redis.set(roomRevKey(id), '0');
+    await redis.set(roomLangKey(id), language);
+    await touchRoomTTL(id);
 
-  return { id, language, createdAt: now };
+    return { id, language, createdAt: now };
+  }
+  catch (err) {
+    console.error('create room error', err);
+    throw err;
+  }
+  
 }
 
 export async function getRoom(roomId: string): Promise<Room | null> {
