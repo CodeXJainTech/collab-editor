@@ -1,0 +1,16 @@
+{
+  "name": "collab-editor",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=apps/server\" \"npm run dev --workspace=apps/client\"",
+    "build": "npm run build --workspace=packages/shared && npm run build --workspace=apps/server && npm run build --workspace=apps/client"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
