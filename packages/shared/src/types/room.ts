@@ -16,10 +16,3 @@ export interface CursorPosition {
   lineNumber: number;
   column: number;
 }
-
-
-export const JUDGE0_LANGUAGE_IDS: Record<Language, number> = {
-  javascript: 63,
-  python: 71,  
-  go: 60,   
-};

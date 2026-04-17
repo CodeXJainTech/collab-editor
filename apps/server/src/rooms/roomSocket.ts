@@ -13,7 +13,7 @@ import redis, {
   roomUsersKey,
 } from "../db/redis";
 import { transformOp, applyOp } from "../ot/engine";
-import { executeCode } from "../execution/judge0";
+import { executeCode } from "../execution/piston";
 
 type IoServer = Server<ClientToServerEvents, ServerToClientEvents>;
 type IoSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
