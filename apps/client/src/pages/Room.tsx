@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { useSocket } from "../hooks/useSocket";
+import { getManager, useSocket } from "../hooks/useSocket";
 import { useOT } from "../hooks/useOT";
 import Editor from "../components/Editor";
 import type {
@@ -8,8 +8,13 @@ import type {
   Room as RoomType,
   Operation,
   CursorPosition,
+  Language,
 } from "@collab-editor/shared";
 import OutputPanel from "../components/OutputPanel";
+import LanguageSelector from "../components/LanguageSelector";
+import Chat from "../components/Chat";
+import UsernameModal from "../components/UsernameModal";
+import ConnectionBanner from "../components/ConnectionBanner";
 
 type RemoteCursor = {
   username: string;
@@ -17,11 +22,22 @@ type RemoteCursor = {
   position: { lineNumber: number; column: number };
 };
 
+type ChatMessage = {
+  userId: string;
+  username: string;
+  text: string;
+  timestamp: number;
+  isSystem: boolean;
+};
+
+type ConnectionStatus = 'connected' | 'disconnected' | 'reconnecting';
+
 export default function Room() {
   const { roomId } = useParams<{ roomId: string }>();
   const navigate = useNavigate();
   const socket = useSocket();
-
+  const manager = getManager();
+  
   const [room, setRoom] = useState<RoomType | null>(null);
   const [users, setUsers] = useState<User[]>([]);
   const [doc, setDoc] = useState("");
@@ -29,11 +45,6 @@ export default function Room() {
   const [remoteCursors, setRemoteCursors] = useState<Map<string, RemoteCursor>>(
     new Map(),
   );
-
-  const [username] = useState(
-    () => `user_${Math.random().toString(36).slice(2, 6)}`,
-  );
-
   const { revisionRef, setRevision, receiveOp } = useOT({
     userId: socket.id ?? "",
     onRemoteOp: setRemoteOp,
@@ -46,18 +57,35 @@ export default function Room() {
     time: number | null;
   } | null>(null);
   const [running, setRunning] = useState(false);
-  const docRef = useRef('');
+  const docRef = useRef("");
+
+  const [language, setLanguage] = useState<Language>("javascript");
+
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus>('connected');
+  const [username, setUsername] = useState<string | null>(() => {
+    return (roomId ? sessionStorage.getItem(`username-${roomId}`) : null) || localStorage.getItem('collab-username') || null;
+  }); 
+
+  function handleUsernameConfirm(name: string) {
+    if (roomId) sessionStorage.setItem(`username-${roomId}`, name);
+    localStorage.setItem('collab-username', name);
+    setUsername(name);
+  }
+
 
   useEffect(() => {
-    if (!roomId) return;
+    if (!roomId || !username) return;
 
     socket.emit("join-room", { roomId, username });
 
-    socket.on("room-state", ({ room, users, doc, revision }) => {
+    socket.on("room-state", ({ room, users, doc, revision, chatHistory }) => {
       setRoom(room);
       setUsers(users);
       setDoc(doc);
       setRevision(revision);
+      setLanguage(room.language);
+      setChatMessages(chatHistory);
     });
 
     socket.on("op-broadcast", ({ op }) => {
@@ -86,22 +114,48 @@ export default function Room() {
     });
 
     socket.on("error", ({ code }) => {
-      if (code === "ROOM_NOT_FOUND") navigate("/");
+      if (code === "ROOM_NOT_FOUND") navigate("/not-found");
     });
 
-    socket.on('run-result', (result) => {
+    socket.on("run-result", (result) => {
       setRunResult(result);
       setRunning(false);
     });
 
+    socket.on("language-changed", ({ language }) => {
+      setLanguage(language);
+    });
+
+    socket.on("chat-broadcast", (message) => {
+      setChatMessages((prev) => [...prev, message]);
+    });
+
+    socket.on('disconnect', () => {
+      setConnectionStatus('disconnected');
+    });
+
+    manager.on('reconnect_attempt', () => {
+      setConnectionStatus('reconnecting');
+    });
+
+    manager.on('reconnect', () => {
+      setConnectionStatus('connected');
+      socket.emit('join-room', { roomId, username: username as string });
+    });
+
     return () => {
-      socket.off('run-result');
+      socket.off("run-result");
       socket.off("room-state");
       socket.off("op-broadcast");
       socket.off("cursor-broadcast");
       socket.off("user-joined");
       socket.off("user-left");
       socket.off("error");
+      socket.off("language-changed");
+      socket.off("chat-broadcast");
+      socket.off('disconnect');
+      manager.off('reconnect_attempt');
+      manager.off('reconnect');
     };
   }, [roomId, socket, username, navigate, receiveOp, setRevision]);
 
@@ -109,17 +163,15 @@ export default function Room() {
     if (!room) return;
     setRunning(true);
     setRunResult(null);
-    socket.emit('run-code', {
+    socket.emit("run-code", {
       code: docRef.current,
       language: room.language,
     });
   }, [socket, room]);
 
-
   useEffect(() => {
     docRef.current = doc;
   }, [doc]);
-
 
   const handleOp = useCallback(
     (op: Operation) => {
@@ -136,6 +188,29 @@ export default function Room() {
     [socket, roomId],
   );
 
+  const handleLanguageChange = useCallback(
+    (lang: Language) => {
+      setLanguage(lang);
+      socket.emit("language-change", { language: lang });
+    },
+    [socket],
+  );
+
+  const handleSendChat = useCallback(
+    (text: string) => {
+      socket.emit("chat-message", { text });
+    },
+    [socket],
+  );
+
+  if (!username) {
+    return (
+      <div className="h-screen bg-neutral-900">
+        <UsernameModal onConfirm={handleUsernameConfirm} />
+      </div>
+    );
+  }
+  
   if (!room) {
     return (
       <div className="flex items-center justify-center h-screen bg-neutral-900 text-white">
@@ -146,8 +221,18 @@ export default function Room() {
 
   return (
     <div className="flex flex-col h-screen bg-neutral-900 text-white">
+      <ConnectionBanner status={connectionStatus} />
+
       <div className="flex items-center justify-between px-4 py-2 bg-neutral-800 border-b border-neutral-700">
-        <span className="text-sm text-neutral-400">room: {room.id.slice(0, 8)}...</span>
+        <div className="flex items-center gap-3">
+          <span className="text-sm text-neutral-400">
+            room: {room.id.slice(0, 8)}...
+          </span>
+          <LanguageSelector
+            current={language}
+            onChange={handleLanguageChange}
+          />
+        </div>
         <div className="flex gap-2">
           {users.map((u) => (
             <span
@@ -167,26 +252,37 @@ export default function Room() {
         </button>
       </div>
 
-      <div className="flex-1 overflow-hidden">
-        <Editor
-          doc={doc}
-          language={room.language}
-          users={users}
-          currentUserId={socket.id ?? ''}
-          onOp={handleOp}
-          onCursorChange={handleCursorChange}
-          remoteOp={remoteOp}
-          remoteCursors={remoteCursors}
-        />
-      </div>
+      <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <div className="flex-1 overflow-hidden">
+            <Editor
+              doc={doc}
+              language={language}
+              users={users}
+              currentUserId={socket.id ?? ''}
+              onOp={handleOp}
+              onCursorChange={handleCursorChange}
+              remoteOp={remoteOp}
+              remoteCursors={remoteCursors}
+            />
+          </div>
+          <div className="h-48">
+            <OutputPanel
+              language={language}
+              onRun={handleRun}
+              result={runResult}
+              running={running}
+            />
+          </div>
+        </div>
 
-      <div className="h-48">
-        <OutputPanel
-          language={room.language}
-          onRun={handleRun}
-          result={runResult}
-          running={running}
-        />
+        <div className="w-72">
+          <Chat
+            messages={chatMessages}
+            currentUserId={socket.id ?? ''}
+            onSend={handleSendChat}
+          />
+        </div>
       </div>
     </div>
   );

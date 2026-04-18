@@ -18,6 +18,13 @@ export interface ServerToClientEvents {
     doc: string;
     revision: number;
     users: User[];
+    chatHistory: {
+      userId: string;
+      username: string;
+      text: string;
+      timestamp: number;
+      isSystem: boolean;
+    }[];
   }) => void;
   "op-broadcast": (payload: { op: Operation; userId: string }) => void;
   "cursor-broadcast": (payload: {

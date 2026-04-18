@@ -1,25 +1,34 @@
-import { v4 as uuidv4 } from 'uuid';
-import prisma from '../db/prisma';
+import { v4 as uuidv4 } from "uuid";
+import prisma from "../db/prisma";
 import redis, {
   roomDocKey,
   roomRevKey,
   roomUsersKey,
   roomLangKey,
   touchRoomTTL,
-} from '../db/redis';
-import type { User, Language, Room } from '@collab-editor/shared';
+  getChatHistory,
+} from "../db/redis";
+import type { User, Language, Room } from "@collab-editor/shared";
 
 const USER_COLORS = [
-  '#F87171', '#FB923C', '#FBBF24', '#34D399',
-  '#38BDB8', '#60A5FA', '#A78BFA', '#F472B6',
+  "#F87171",
+  "#FB923C",
+  "#FBBF24",
+  "#34D399",
+  "#38BDB8",
+  "#60A5FA",
+  "#A78BFA",
+  "#F472B6",
 ];
 
 function pickColor(index: number) {
   return USER_COLORS[index % USER_COLORS.length];
 }
 
-export async function createRoom(language: Language = 'javascript'): Promise<Room> {
-  try{
+export async function createRoom(
+  language: Language = "javascript",
+): Promise<Room> {
+  try {
     const id = uuidv4();
     const now = Date.now();
 
@@ -32,18 +41,16 @@ export async function createRoom(language: Language = 'javascript'): Promise<Roo
       },
     });
 
-    await redis.set(roomDocKey(id), '');
-    await redis.set(roomRevKey(id), '0');
+    await redis.set(roomDocKey(id), "");
+    await redis.set(roomRevKey(id), "0");
     await redis.set(roomLangKey(id), language);
     await touchRoomTTL(id);
 
     return { id, language, createdAt: now };
-  }
-  catch (err) {
-    console.error('create room error', err);
+  } catch (err) {
+    console.error("create room error", err);
     throw err;
   }
-  
 }
 
 export async function getRoom(roomId: string): Promise<Room | null> {
@@ -56,11 +63,22 @@ export async function getRoom(roomId: string): Promise<Room | null> {
   };
 }
 
-export async function joinRoom(roomId: string, userId: string, username: string): Promise<{
+export async function joinRoom(
+  roomId: string,
+  userId: string,
+  username: string,
+): Promise<{
   room: Room;
   doc: string;
   revision: number;
   users: User[];
+  chatHistory: {
+    userId: string;
+    username: string;
+    text: string;
+    timestamp: number;
+    isSystem: boolean;
+  }[];
 } | null> {
   const room = await getRoom(roomId);
   if (!room) return null;
@@ -77,13 +95,15 @@ export async function joinRoom(roomId: string, userId: string, username: string)
     data: { lastActive: Date.now() },
   });
 
-  const doc = (await redis.get(roomDocKey(roomId))) ?? '';
-  const revision = parseInt((await redis.get(roomRevKey(roomId))) ?? '0', 10);
+  const doc = (await redis.get(roomDocKey(roomId))) ?? "";
+  const revision = parseInt((await redis.get(roomRevKey(roomId))) ?? "0", 10);
   const users = await getRoomUsers(roomId);
-  const language = (await redis.get(roomLangKey(roomId))) as Language ?? 'javascript';
+  const language =
+    ((await redis.get(roomLangKey(roomId))) as Language) ?? "javascript";
   room.language = language;
+  const chatHistory = await getChatHistory(roomId);
 
-  return { room, doc, revision, users };
+  return { room, doc, revision, users, chatHistory };
 }
 
 export async function leaveRoom(roomId: string, userId: string) {
@@ -98,7 +118,7 @@ export async function getRoomUsers(roomId: string): Promise<User[]> {
 }
 
 export async function getRoomDoc(roomId: string) {
-  const doc = (await redis.get(roomDocKey(roomId))) ?? '';
-  const revision = parseInt((await redis.get(roomRevKey(roomId))) ?? '0', 10);
+  const doc = (await redis.get(roomDocKey(roomId))) ?? "";
+  const revision = parseInt((await redis.get(roomRevKey(roomId))) ?? "0", 10);
   return { doc, revision };
 }

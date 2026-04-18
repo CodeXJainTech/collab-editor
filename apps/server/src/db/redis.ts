@@ -48,4 +48,25 @@ export async function getOpsSince(roomId: string, revision: number): Promise<Ope
   return raw.map((r) => JSON.parse(r) as Operation);
 }
 
+export function roomChatKey(roomId: string) {
+  return `room:${roomId}:chat`;
+}
+
+export async function pushChatMessage(roomId: string, message: {
+  userId: string;
+  username: string;
+  text: string;
+  timestamp: number;
+  isSystem: boolean;
+}) {
+  await redis.rpush(roomChatKey(roomId), JSON.stringify(message));
+  await redis.ltrim(roomChatKey(roomId), -50, -1);
+  await redis.expire(roomChatKey(roomId), ROOM_TTL);
+}
+
+export async function getChatHistory(roomId: string) {
+  const raw = await redis.lrange(roomChatKey(roomId), 0, -1);
+  return raw.map((r) => JSON.parse(r));
+}
+
 export default redis;

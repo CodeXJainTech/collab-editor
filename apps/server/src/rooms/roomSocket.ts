@@ -7,13 +7,16 @@ import type {
 import { joinRoom, leaveRoom, getRoomUsers } from "./roomManager";
 import redis, {
   getOpsSince,
+  pushChatMessage,
   pushOp,
   roomDocKey,
+  roomLangKey,
   roomRevKey,
   roomUsersKey,
 } from "../db/redis";
 import { transformOp, applyOp } from "../ot/engine";
 import { executeCode } from "../execution/piston";
+import prisma from "../db/prisma";
 
 type IoServer = Server<ClientToServerEvents, ServerToClientEvents>;
 type IoSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
@@ -42,13 +45,23 @@ export function registerRoomHandlers(io: IoServer, socket: IoSocket) {
 
       await socket.join(roomId);
       socketRoomMap.set(socket.id, { roomId, userId, username });
-
+      const systemMessage = {
+        userId: 'system',
+        username: 'system',
+        text: `${username} joined`,
+        timestamp: Date.now(),
+        isSystem: true,
+      };
+      
+      await pushChatMessage(roomId, systemMessage);
+      io.to(roomId).emit('chat-broadcast', systemMessage);
       // send full state to the joining user
       socket.emit("room-state", {
         room: state.room,
         doc: state.doc,
         revision: state.revision,
         users: state.users,
+        chatHistory: state.chatHistory,
       });
 
       // notify everyone else
@@ -197,4 +210,39 @@ export function registerRoomHandlers(io: IoServer, socket: IoSocket) {
     }
   });
 
+  socket.on('language-change', async ({ language }) => {
+    const info = socketRoomMap.get(socket.id);
+    if (!info) return;
+  
+    const { roomId, userId } = info;
+  
+    await redis.set(roomLangKey(roomId), language);
+  
+    await prisma.room.update({
+      where: { id: roomId },
+      data: { language },
+    });
+  
+    io.to(roomId).emit('language-changed', { language, userId });
+  });
+
+  socket.on('chat-message', async ({ text }) => {
+    const info = socketRoomMap.get(socket.id);
+    if (!info) return;
+  
+    const { roomId, userId, username } = info;
+  
+    if (!text.trim() || text.length > 500) return;
+  
+    const message = {
+      userId,
+      username,
+      text: text.trim(),
+      timestamp: Date.now(),
+      isSystem: false,
+    };
+  
+    await pushChatMessage(roomId, message);
+    io.to(roomId).emit('chat-broadcast', message);
+  });
 }
