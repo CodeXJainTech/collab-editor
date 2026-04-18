@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "scripts": {
     "dev": "tsx watch src/index.ts",
-    "build": "prisma generate && tsc",
+    "build": "npm run build --workspace=@collab-editor/shared && prisma generate && tsc --project tsconfig.build.json",
     "start": "node dist/index.js",
     "db:push": "prisma db push"
   },
@@ -26,6 +26,6 @@
     "tsx": "^4.7.0"
   },
   "prisma": {
-    "schema": "apps/server/prisma/schema.prisma"
+    "schema": "prisma/schema.prisma"
   }
 }
