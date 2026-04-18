@@ -17,9 +17,7 @@
     "ioredis": "^5.3.2",
     "prisma": "6.19",
     "socket.io": "^4.7.4",
-    "uuid": "^9.0.0"
-  },
-  "devDependencies": {
+    "uuid": "^9.0.0",
     "@types/cors": "^2.8.17",
     "@types/express": "^4.17.21",
     "@types/node": "^20.11.5",
@@ -27,6 +25,7 @@
     "tsx": "^4.7.0",
     "typescript": "^5.3.3"
   },
+  "devDependencies": {},
   "prisma": {
     "schema": "apps/server/prisma/schema.prisma"
   }
