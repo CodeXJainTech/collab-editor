@@ -1,5 +1,0 @@
-[phases.build]
-cmds = ["npm run build --workspace=apps/server"]
-
-[start]
-cmd = "npm run start --workspace=apps/server"
