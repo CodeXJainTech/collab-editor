@@ -89,8 +89,6 @@ export default function Room() {
     });
 
     socket.on("op-broadcast", ({ op }) => {
-      console.log('received op', JSON.stringify(op));
-  receiveOp(op);
       receiveOp(op);
     });
 

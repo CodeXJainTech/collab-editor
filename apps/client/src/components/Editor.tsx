@@ -1,7 +1,7 @@
 import { useRef, useEffect } from "react";
 import MonacoEditor, { OnMount } from "@monaco-editor/react";
 import type * as Monaco from "monaco-editor";
-import type { Operation, Language, User } from "@collab-editor/shared";
+import type { Operation, Language, User, CursorPosition } from "@collab-editor/shared";
 
 interface EditorProps {
   doc: string;
@@ -9,14 +9,14 @@ interface EditorProps {
   users: User[];
   currentUserId: string;
   onOp: (op: Operation) => void;
-  onCursorChange: (position: { lineNumber: number; column: number }) => void;
+  onCursorChange: (position: CursorPosition) => void;
   remoteOp: Operation | null;
   remoteCursors: Map<
     string,
     {
       username: string;
       color: string;
-      position: { lineNumber: number; column: number };
+      position: CursorPosition;
     }
   >;
   getRevision: () => number;

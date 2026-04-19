@@ -164,6 +164,9 @@ export function registerRoomHandlers(io: IoServer, socket: IoSocket) {
 
         let transformedOp: Operation = { ...op, userId };
         for (const concurrent of concurrentOps) {
+          if (concurrent.userId === userId) {
+            continue; // local op already accounts for earlier ops from the same user
+          }
           transformedOp = transformOp(transformedOp, concurrent);
         }
 
