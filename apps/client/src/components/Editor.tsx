@@ -219,10 +219,17 @@ export default function Editor({
           scrollBeyondLastLine: false,
           automaticLayout: true,
           tabSize: 2,
-          autoClosingBrackets: "always",
-          autoClosingQuotes: "always",
-          autoClosingOvertype: "always",
-          autoSurround: "languageDefined",
+          autoClosingBrackets: "never",
+          autoClosingQuotes: "never",
+          autoClosingOvertype: "never",
+          autoSurround: "never",
+          quickSuggestions: false,
+          suggestOnTriggerCharacters: false,
+          acceptSuggestionOnEnter: "off",
+          tabCompletion: "off",
+          wordBasedSuggestions: "off",
+          parameterHints: { enabled: false },
+          inlineSuggest: { enabled: false },
         }}
       />
     </div>
