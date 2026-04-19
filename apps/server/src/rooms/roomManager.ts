@@ -63,6 +63,21 @@ export async function getRoom(roomId: string): Promise<Room | null> {
   };
 }
 
+export async function getRoomState(roomId: string) {
+  const room = await getRoom(roomId);
+  if (!room) return null;
+
+  const doc = (await redis.get(roomDocKey(roomId))) ?? "";
+  const revision = parseInt((await redis.get(roomRevKey(roomId))) ?? "0", 10);
+  const users = await getRoomUsers(roomId);
+  const language =
+    ((await redis.get(roomLangKey(roomId))) as Language) ?? "javascript";
+  room.language = language;
+  const chatHistory = await getChatHistory(roomId);
+
+  return { room, doc, revision, users, chatHistory };
+}
+
 export async function joinRoom(
   roomId: string,
   userId: string,
@@ -95,15 +110,7 @@ export async function joinRoom(
     data: { lastActive: Date.now() },
   });
 
-  const doc = (await redis.get(roomDocKey(roomId))) ?? "";
-  const revision = parseInt((await redis.get(roomRevKey(roomId))) ?? "0", 10);
-  const users = await getRoomUsers(roomId);
-  const language =
-    ((await redis.get(roomLangKey(roomId))) as Language) ?? "javascript";
-  room.language = language;
-  const chatHistory = await getChatHistory(roomId);
-
-  return { room, doc, revision, users, chatHistory };
+  return getRoomState(roomId);
 }
 
 export async function leaveRoom(roomId: string, userId: string) {

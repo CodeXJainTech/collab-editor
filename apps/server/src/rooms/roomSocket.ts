@@ -4,7 +4,7 @@ import type {
   Operation,
   ServerToClientEvents,
 } from "@collab-editor/shared";
-import { joinRoom, leaveRoom, getRoomUsers } from "./roomManager";
+import { joinRoom, leaveRoom, getRoomUsers, getRoomState } from "./roomManager";
 import redis, {
   getOpsSince,
   pushChatMessage,
@@ -108,6 +108,23 @@ export function registerRoomHandlers(io: IoServer, socket: IoSocket) {
         code: "JOIN_FAILED",
         message: "could not join room",
       });
+    }
+  });
+
+  socket.on("request-room-state", async ({ roomId }) => {
+    try {
+      const state = await getRoomState(roomId);
+      if (state) {
+        socket.emit("room-state", {
+          room: state.room,
+          doc: state.doc,
+          revision: state.revision,
+          users: state.users,
+          chatHistory: state.chatHistory,
+        });
+      }
+    } catch (err) {
+      console.error("request-room-state error", err);
     }
   });
 

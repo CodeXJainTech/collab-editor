@@ -9,6 +9,7 @@ export interface ClientToServerEvents {
   "chat-message": (payload: { text: string }) => void;
   "run-code": (payload: { code: string; language: Language }) => void;
   "language-change": (payload: { language: Language }) => void;
+  "request-room-state": (payload: { roomId: string }) => void;
 }
 
 // Events sent FROM server TO client
