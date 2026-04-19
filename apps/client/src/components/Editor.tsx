@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from "react";
+import { useRef, useEffect } from "react";
 import MonacoEditor, { OnMount } from "@monaco-editor/react";
 import type * as Monaco from "monaco-editor";
 import type { Operation, Language, User } from "@collab-editor/shared";
@@ -45,31 +45,28 @@ export default function Editor({
     editor.setValue(doc);
 
     editor.onDidChangeModelContent((event) => {
-      // skip changes caused by remote ops
       if (isRemoteOpRef.current) return;
+
+      const allOps: any[] = [];
 
       for (const change of event.changes) {
         const position = change.rangeOffset;
-        const textOps: any[] = [];
-        
-        // Always delete first so that the base string is reduced before inserting characters 
-        // at the same position.
+
         if (change.rangeLength > 0) {
-          textOps.push({ type: "delete", position, count: change.rangeLength });
+          allOps.push({ type: "delete", position, count: change.rangeLength });
         }
-
         if (change.text.length > 0) {
-          textOps.push({ type: "insert", position, chars: change.text });
+          allOps.push({ type: "insert", position, chars: change.text });
         }
+      }
 
-        if (textOps.length > 0) {
-          onOp({
-            ops: textOps,
-            revision: getRevision(),
-            userId: currentUserId,
-            timestamp: Date.now(),
-          });
-        }
+      if (allOps.length > 0) {
+        onOp({
+          ops: allOps,
+          revision: getRevision(),
+          userId: currentUserId,
+          timestamp: Date.now(),
+        });
       }
     });
 
@@ -81,11 +78,10 @@ export default function Editor({
           lineNumber: event.position.lineNumber,
           column: event.position.column,
         });
-      }, 50); // Increased to 50ms to be safer for auto-complete settlement
+      }, 50);
     });
   };
 
-  // apply remote op to editor
   useEffect(() => {
     if (!remoteOp || !editorRef.current || !monacoRef.current) return;
 
@@ -94,7 +90,6 @@ export default function Editor({
     const model = editor.getModel();
     if (!model) return;
 
-    // Prevent double-applying our own ops that the server broadcasted back
     if (remoteOp.userId === currentUserId) {
       return;
     }
@@ -139,7 +134,6 @@ export default function Editor({
     isRemoteOpRef.current = false;
   }, [remoteOp]);
 
-  // render remote cursors as Monaco decorations
   useEffect(() => {
     if (!editorRef.current || !monacoRef.current) return;
 
@@ -155,7 +149,6 @@ export default function Editor({
       remoteCursors.forEach(({ username, color, position }, userId) => {
         if (userId === currentUserId) return;
 
-      // cursor line decoration
         newDecorations.push({
           range: new monaco.Range(
             position.lineNumber,
@@ -171,26 +164,25 @@ export default function Editor({
           },
         });
 
-      // inject CSS for this user's cursor color dynamically
         const styleId = `cursor-style-${userId.slice(0, 6)}`;
         if (!document.getElementById(styleId)) {
           const style = document.createElement("style");
           style.id = styleId;
           style.textContent = `
-          .remote-cursor-${userId.slice(0, 6)} {
-            border-left: 2px solid ${color};
-          }
+            .remote-cursor-${userId.slice(0, 6)} {
+              border-left: 2px solid ${color};
+            }
             .remote-cursor-before-${userId.slice(0, 6)}::before {
-            content: '${username}';
-            background: ${color};
-            color: white;
-            font-size: 10px;
-            padding: 1px 4px;
-            border-radius: 2px;
-            position: absolute;
-            top: -18px;
-            white-space: nowrap;
-            pointer-events: none;
+              content: '${username}';
+              background: ${color};
+              color: white;
+              font-size: 10px;
+              padding: 1px 4px;
+              border-radius: 2px;
+              position: absolute;
+              top: -18px;
+              white-space: nowrap;
+              pointer-events: none;
             }
           `;
           document.head.appendChild(style);
@@ -203,7 +195,6 @@ export default function Editor({
       );
     };
 
-    // Use a small timeout to ensure Monaco has finished its own decoration management
     const timeout = setTimeout(render, 10);
     return () => clearTimeout(timeout);
   }, [remoteCursors, currentUserId, remoteOp]);
