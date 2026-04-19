@@ -18,6 +18,33 @@ import { transformOp, applyOp } from "../ot/engine";
 import { executeCode } from "../execution/piston";
 import prisma from "../db/prisma";
 
+class RoomLock {
+  private queue: Promise<any> = Promise.resolve();
+
+  acquire<T>(task: () => Promise<T>): Promise<T> {
+    const resultPromise = this.queue.then(async () => {
+      try {
+        return await task();
+      } catch (err) {
+        throw err;
+      }
+    });
+    this.queue = resultPromise.catch(() => {});
+    return resultPromise;
+  }
+}
+
+const roomLocks = new Map<string, RoomLock>();
+
+function getRoomLock(roomId: string) {
+  let lock = roomLocks.get(roomId);
+  if (!lock) {
+    lock = new RoomLock();
+    roomLocks.set(roomId, lock);
+  }
+  return lock;
+}
+
 type IoServer = Server<ClientToServerEvents, ServerToClientEvents>;
 type IoSocket = Socket<ClientToServerEvents, ServerToClientEvents>;
 
@@ -75,15 +102,6 @@ export function registerRoomHandlers(io: IoServer, socket: IoSocket) {
           },
         });
 
-      // system chat message
-      io.to(roomId).emit("chat-broadcast", {
-        userId: "system",
-        username: "system",
-        text: `${username} joined`,
-        timestamp: Date.now(),
-        isSystem: true,
-      });
-
       console.log(`${username} joined room ${roomId}`);
     } catch (err) {
       console.error("join-room error", err);
@@ -103,15 +121,22 @@ export function registerRoomHandlers(io: IoServer, socket: IoSocket) {
 
     await leaveRoom(roomId, userId);
 
+    const users = await getRoomUsers(roomId);
+    if (users.length === 0) {
+      roomLocks.delete(roomId);
+    }
+
     io.to(roomId).emit("user-left", { userId, username });
 
-    io.to(roomId).emit("chat-broadcast", {
-      userId: "system",
-      username: "system",
+    const leaveMessage = {
+      userId: 'system',
+      username: 'system',
       text: `${username} left`,
       timestamp: Date.now(),
       isSystem: true,
-    });
+    };
+    await pushChatMessage(roomId, leaveMessage);
+    io.to(roomId).emit('chat-broadcast', leaveMessage);
 
     console.log(`${username} left room ${roomId}`);
   });
@@ -121,41 +146,42 @@ export function registerRoomHandlers(io: IoServer, socket: IoSocket) {
     if (!info) return;
 
     const { roomId, userId } = info;
-
     try {
-      const currentRevision = parseInt(
-        (await redis.get(roomRevKey(roomId))) ?? "0",
-        10,
-      );
+      await getRoomLock(roomId).acquire(async () => {
+        const currentRevision = parseInt(
+          (await redis.get(roomRevKey(roomId))) ?? "0",
+          10,
+        );
 
-      // get all ops the client has not seen yet
-      const concurrentOps = await getOpsSince(roomId, op.revision);
+        // get all ops the client has not seen yet
+        const concurrentOps = await getOpsSince(roomId, op.revision);
 
-      // transform the incoming op against each concurrent op
-      let transformedOp: Operation = { ...op, userId };
-      for (const concurrent of concurrentOps) {
-        if (concurrent.userId === userId) {
-          continue; // local op already accounts for earlier ops from the same user
+        // transform the incoming op against each concurrent op
+        let transformedOp: Operation = { ...op, userId };
+        for (const concurrent of concurrentOps) {
+          // if (concurrent.userId === userId) {
+          //   continue; // local op already accounts for earlier ops from the same user
+          // }
+          transformedOp = transformOp(transformedOp, concurrent);
         }
-        transformedOp = transformOp(transformedOp, concurrent);
-      }
 
-      // apply to document
-      const currentDoc = (await redis.get(roomDocKey(roomId))) ?? "";
-      const newDoc = applyOp(currentDoc, transformedOp);
-      const newRevision = currentRevision + 1;
+        // apply to document
+        const currentDoc = (await redis.get(roomDocKey(roomId))) ?? "";
+        const newDoc = applyOp(currentDoc, transformedOp);
+        const newRevision = currentRevision + 1;
 
-      transformedOp.revision = newRevision;
+        transformedOp.revision = newRevision;
 
-      // persist
-      await redis.set(roomDocKey(roomId), newDoc);
-      await redis.set(roomRevKey(roomId), String(newRevision));
-      await pushOp(roomId, transformedOp);
+        // persist
+        await redis.set(roomDocKey(roomId), newDoc);
+        await redis.set(roomRevKey(roomId), String(newRevision));
+        await pushOp(roomId, transformedOp);
 
-      // broadcast transformed op to all clients in the room including sender
-      io.to(roomId).emit("op-broadcast", {
-        op: transformedOp,
-        userId,
+        // broadcast transformed op to all clients in the room including sender
+        io.to(roomId).emit("op-broadcast", {
+          op: transformedOp,
+          userId,
+        });
       });
     } catch (err) {
       console.error("op error", err);

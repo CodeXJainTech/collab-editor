@@ -19,6 +19,7 @@ interface EditorProps {
       position: { lineNumber: number; column: number };
     }
   >;
+  getRevision: () => number;
 }
 
 export default function Editor({
@@ -30,12 +31,12 @@ export default function Editor({
   onCursorChange,
   remoteOp,
   remoteCursors,
+  getRevision,
 }: EditorProps) {
   const editorRef = useRef<Monaco.editor.IStandaloneCodeEditor | null>(null);
   const monacoRef = useRef<typeof Monaco | null>(null);
   const isRemoteOpRef = useRef(false);
   const decorationsRef = useRef<string[]>([]);
-  const revisionRef = useRef(0);
 
   const handleMount: OnMount = (editor, monaco) => {
     editorRef.current = editor;
@@ -49,8 +50,6 @@ export default function Editor({
 
       for (const change of event.changes) {
         const position = change.rangeOffset;
-        const ops: Monaco.editor.IModelContentChange[] = []; // Not the type, we need TextOp
-        
         const textOps: any[] = [];
         
         // Always delete first so that the base string is reduced before inserting characters 
@@ -66,7 +65,7 @@ export default function Editor({
         if (textOps.length > 0) {
           onOp({
             ops: textOps,
-            revision: revisionRef.current,
+            revision: getRevision(),
             userId: currentUserId,
             timestamp: Date.now(),
           });
@@ -74,11 +73,15 @@ export default function Editor({
       }
     });
 
+    const cursorTimeoutRef = { current: null as any };
     editor.onDidChangeCursorPosition((event) => {
-      onCursorChange({
-        lineNumber: event.position.lineNumber,
-        column: event.position.column,
-      });
+      if (cursorTimeoutRef.current) clearTimeout(cursorTimeoutRef.current);
+      cursorTimeoutRef.current = setTimeout(() => {
+        onCursorChange({
+          lineNumber: event.position.lineNumber,
+          column: event.position.column,
+        });
+      }, 50); // Increased to 50ms to be safer for auto-complete settlement
     });
   };
 
@@ -93,7 +96,6 @@ export default function Editor({
 
     // Prevent double-applying our own ops that the server broadcasted back
     if (remoteOp.userId === currentUserId) {
-      revisionRef.current = remoteOp.revision;
       return;
     }
 
@@ -134,7 +136,6 @@ export default function Editor({
       }
     }
 
-    revisionRef.current = remoteOp.revision;
     isRemoteOpRef.current = false;
   }, [remoteOp]);
 
@@ -142,42 +143,44 @@ export default function Editor({
   useEffect(() => {
     if (!editorRef.current || !monacoRef.current) return;
 
-    const editor = editorRef.current;
-    const monaco = monacoRef.current;
-    const model = editor.getModel();
-    if (!model) return;
+    const render = () => {
+      const editor = editorRef.current;
+      const monaco = monacoRef.current;
+      if (!editor || !monaco) return;
+      const model = editor.getModel();
+      if (!model) return;
 
-    const newDecorations: Monaco.editor.IModelDeltaDecoration[] = [];
+      const newDecorations: Monaco.editor.IModelDeltaDecoration[] = [];
 
-    remoteCursors.forEach(({ username, color, position }, userId) => {
-      if (userId === currentUserId) return;
+      remoteCursors.forEach(({ username, color, position }, userId) => {
+        if (userId === currentUserId) return;
 
       // cursor line decoration
-      newDecorations.push({
-        range: new monaco.Range(
-          position.lineNumber,
-          position.column,
-          position.lineNumber,
-          position.column,
-        ),
-        options: {
-          className: `remote-cursor-${userId.slice(0, 6)}`,
-          beforeContentClassName: `remote-cursor-before-${userId.slice(0, 6)}`,
-          stickiness:
-            monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
-        },
-      });
+        newDecorations.push({
+          range: new monaco.Range(
+            position.lineNumber,
+            position.column,
+            position.lineNumber,
+            position.column,
+          ),
+          options: {
+            className: `remote-cursor-${userId.slice(0, 6)}`,
+            beforeContentClassName: `remote-cursor-before-${userId.slice(0, 6)}`,
+            stickiness:
+              monaco.editor.TrackedRangeStickiness.NeverGrowsWhenTypingAtEdges,
+          },
+        });
 
       // inject CSS for this user's cursor color dynamically
-      const styleId = `cursor-style-${userId.slice(0, 6)}`;
-      if (!document.getElementById(styleId)) {
-        const style = document.createElement("style");
-        style.id = styleId;
-        style.textContent = `
+        const styleId = `cursor-style-${userId.slice(0, 6)}`;
+        if (!document.getElementById(styleId)) {
+          const style = document.createElement("style");
+          style.id = styleId;
+          style.textContent = `
           .remote-cursor-${userId.slice(0, 6)} {
             border-left: 2px solid ${color};
           }
-          .remote-cursor-before-${userId.slice(0, 6)}::before {
+            .remote-cursor-before-${userId.slice(0, 6)}::before {
             content: '${username}';
             background: ${color};
             color: white;
@@ -188,17 +191,22 @@ export default function Editor({
             top: -18px;
             white-space: nowrap;
             pointer-events: none;
-          }
-        `;
-        document.head.appendChild(style);
-      }
-    });
+            }
+          `;
+          document.head.appendChild(style);
+        }
+      });
 
-    decorationsRef.current = editor.deltaDecorations(
-      decorationsRef.current,
-      newDecorations,
-    );
-  }, [remoteCursors, currentUserId]);
+      decorationsRef.current = editor.deltaDecorations(
+        decorationsRef.current,
+        newDecorations,
+      );
+    };
+
+    // Use a small timeout to ensure Monaco has finished its own decoration management
+    const timeout = setTimeout(render, 10);
+    return () => clearTimeout(timeout);
+  }, [remoteCursors, currentUserId, remoteOp]);
 
   const monacoLanguage =
     language === "javascript"
@@ -220,6 +228,10 @@ export default function Editor({
           scrollBeyondLastLine: false,
           automaticLayout: true,
           tabSize: 2,
+          autoClosingBrackets: "always",
+          autoClosingQuotes: "always",
+          autoClosingOvertype: "always",
+          autoSurround: "languageDefined",
         }}
       />
     </div>

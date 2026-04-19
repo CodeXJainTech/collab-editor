@@ -6,8 +6,8 @@ import type { Operation, TextOp } from '@collab-editor/shared';
 export function transformOp(opA: Operation, opB: Operation): Operation {
   const transformedOps: TextOp[] = [];
 
-  let opsA = [...opA.ops];
-  let opsB = [...opB.ops];
+  const opsA = [...opA.ops];
+  const opsB = [...opB.ops];
 
   for (const a of opsA) {
     let transformed = { ...a };
@@ -55,16 +55,27 @@ function transformSingle(a: TextOp, b: TextOp): TextOp {
   }
 
   if (a.type === 'delete' && b.type === 'delete') {
-    if (b.position < a.position) {
-      const deleteCount = b.count ?? 0;
-      const newPos = Math.max(b.position, a.position - deleteCount);
-      return { ...a, position: newPos };
+    const aStart = a.position;
+    const aCount = a.count ?? 0;
+    const aEnd = aStart + aCount;
+    
+    const bStart = b.position;
+    const bCount = b.count ?? 0;
+    const bEnd = bStart + bCount;
+
+    if (bEnd <= aStart) {
+      // b completely before a
+      return { ...a, position: Math.max(0, aStart - bCount) };
+    } else if (bStart >= aEnd) {
+      // b completely after a
+      return a;
+    } else {
+      // overlap
+      const newStart = bStart < aStart ? bStart : aStart;
+      const originalOverlap = Math.min(aEnd, bEnd) - Math.max(aStart, bStart);
+      const newCount = Math.max(0, aCount - originalOverlap);
+      return { ...a, position: newStart, count: newCount };
     }
-    // if b deleted overlapping region, adjust a's count
-    if (b.position === a.position) {
-      return { ...a, count: Math.max(0, (a.count ?? 0) - (b.count ?? 0)) };
-    }
-    return a;
   }
 
   return a;

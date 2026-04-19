@@ -49,7 +49,7 @@ export default function Room() {
     userId: socket.id ?? "",
     onRemoteOp: setRemoteOp,
   });
-
+  const getRevision = useCallback(() => revisionRef.current, [revisionRef]);
   const [runResult, setRunResult] = useState<{
     stdout: string;
     stderr: string;
@@ -264,6 +264,7 @@ export default function Room() {
               onCursorChange={handleCursorChange}
               remoteOp={remoteOp}
               remoteCursors={remoteCursors}
+              getRevision={getRevision}
             />
           </div>
           <div className="h-48">
