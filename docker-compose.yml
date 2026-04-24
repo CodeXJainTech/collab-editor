@@ -1,0 +1,71 @@
+services:
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: collabeditor
+    ports:
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6389:6379"
+    volumes:
+      - redisdata:/data
+
+  piston:
+    image: ghcr.io/engineer-man/piston
+    restart: always
+    privileged: true
+    ports:
+      - "2000:2000"
+    volumes:
+      - piston_data:/piston
+    tmpfs:
+      - /tmp
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "3001:3001"
+    environment:
+      - PORT=3001
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/collabeditor
+      - REDIS_URL=redis://redis:6379
+      - PISTON_API_URL=http://piston:2000/api/v2
+      - NODE_ENV=production
+    # Overriding the default start command to make sure Prisma database schema is pushed before starting the server
+    command: >
+      sh -c "npm run db:push --workspace=@collab-editor/server && npm run start --workspace=@collab-editor/server"
+    depends_on:
+      - db
+      - redis
+      - piston
+
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "5173:5173"
+    environment:
+      - PORT=5173
+    command: >
+      sh -c "npx serve -s apps/client/dist -l 5173"
+    depends_on:
+      - app
+
+volumes:
+  pgdata:
+  redisdata:
+  piston_data:

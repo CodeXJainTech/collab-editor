@@ -1,1 +1,37 @@
 @import "tailwindcss";
+
+@theme {
+  --color-dark-bg: #0f1115;
+  --color-dark-panel: rgba(255, 255, 255, 0.03);
+  --color-primary: #3b82f6;
+  --color-primary-hover: #2563eb;
+  --animate-fade-in: fadeIn 0.3s ease-in-out;
+  --animate-slide-up: slideUp 0.4s ease-out;
+}
+
+@layer utilities {
+  .glass-panel {
+    background: var(--color-dark-panel);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+body {
+  background-color: var(--color-dark-bg);
+  background-image: radial-gradient(circle at 50% 0%, rgba(59, 130, 246, 0.1) 0%, transparent 50%);
+  color: white;
+  margin: 0;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+}
