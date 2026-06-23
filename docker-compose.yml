@@ -1,7 +1,6 @@
 services:
   db:
     image: postgres:15-alpine
-    restart: always
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -13,7 +12,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    restart: always
     ports:
       - "6389:6379"
     volumes:
@@ -21,7 +19,6 @@ services:
 
   piston:
     image: ghcr.io/engineer-man/piston
-    restart: always
     privileged: true
     ports:
       - "2000:2000"
@@ -34,7 +31,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    restart: always
     ports:
       - "3001:3001"
     environment:
@@ -55,7 +51,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    restart: always
     ports:
       - "5173:5173"
     environment:
